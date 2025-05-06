@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(offset_of)]
 
+use core::arch::asm;
 use core::mem::offset_of;
 use core::mem::size_of;
 use core::panic::PanicInfo;
@@ -112,10 +113,7 @@ fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     let vram_addr = efi_graphics_output_protocol.mode.frame_buffer_base;
     let vram_byte_size = efi_graphics_output_protocol.mode.frame_buffer_size;
     let vram = unsafe {
-        slice::from_raw_parts_mut(
-            vram_addr as *mut u32,
-            vram_byte_size / size_of::<u32>()
-        )
+        slice::from_raw_parts_mut(vram_addr as *mut u32, vram_byte_size / size_of::<u32>())
     };
 
     // フレームバッファの情報を上書きする
@@ -123,10 +121,20 @@ fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
         *e = 0x3eb370;
     }
 
-    loop {}
+    loop {
+        // 何もしない
+        unsafe {
+            asm!("hlt");
+        }
+    }
 }
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+    loop {
+        // 何もしない
+        unsafe {
+            asm!("hlt");
+        }
+    }
 }
