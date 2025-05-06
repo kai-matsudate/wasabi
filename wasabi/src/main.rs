@@ -12,6 +12,7 @@ type EfiVoid = u8;
 type EfiHandle = u64;
 type Result<T> = core::result::Result<T, &'static str>;
 
+// UFI protocol の uuid である guid
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct EfiGuid {
@@ -35,6 +36,7 @@ enum EfiStatus {
     Success = 0,
 }
 
+// locate_protocol のポインタを持つEFISystemTableのメンバ
 #[repr(C)]
 struct EfiBootServicesTable {
     _reserved0: [u64; 40],
@@ -53,6 +55,7 @@ struct EfiSystemTable {
 }
 const _: () = assert!(offset_of!(EfiSystemTable, boot_services) == 96);
 
+// フレームバッファの詳細情報
 #[repr(C)]
 #[derive(Debug)]
 struct EfiGraphicsOutputProtocolPixelInfo {
@@ -65,6 +68,7 @@ struct EfiGraphicsOutputProtocolPixelInfo {
 }
 const _: () = assert!(size_of::<EfiGraphicsOutputProtocolPixelInfo>() == 36);
 
+// EFI Graphics Output Protocol のメンバとして保持されるフレームバッファの情報
 #[repr(C)]
 #[derive(Debug)]
 struct EfiGraphicsOutputProtocolMode<'a> {
@@ -83,10 +87,12 @@ struct EfiGraphicsOutputProtocol<'a> {
     pub mode: &'a EfiGraphicsOutputProtocolMode<'a>,
 }
 
+// EFI System Table からEFI Graphics Output Protocolを取得する関数
 fn locate_graphic_protocol<'a>(
     efi_system_table: &EfiSystemTable,
 ) -> Result<&'a EfiGraphicsOutputProtocol<'a>> {
     let mut graphic_output_protocol = null_mut::<EfiGraphicsOutputProtocol>();
+    // 引数の EFI System Table から locate_protocol 関数のポインタを取得して呼び出す
     let status = (efi_system_table.boot_services.locate_protocol)(
         &EFI_GRAPHICS_OUTPUTPROTOCOL_GUID,
         null_mut::<EfiVoid>(),
@@ -102,6 +108,7 @@ fn locate_graphic_protocol<'a>(
 #[no_mangle]
 fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     let efi_graphics_output_protocol = locate_graphic_protocol(efi_system_table).unwrap();
+    // フレームバッファの情報を取得
     let vram_addr = efi_graphics_output_protocol.mode.frame_buffer_base;
     let vram_byte_size = efi_graphics_output_protocol.mode.frame_buffer_size;
     let vram = unsafe {
@@ -111,6 +118,7 @@ fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
         )
     };
 
+    // フレームバッファの情報を上書きする
     for e in vram {
         *e = 0x3eb370;
     }
