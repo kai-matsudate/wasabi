@@ -121,6 +121,30 @@ fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
         let _ = draw_point(&mut vram, 0x010101 * i as u32, i, i);
     }
 
+    let grid_size: i64 = 32;
+    let rect_size: i64 = grid_size * 8;
+
+    for i in (0..=rect_size).step_by(grid_size as usize) {
+        let _ = draw_line(&mut vram, 0xff0000, 0, i, rect_size, i);
+        let _ = draw_line(&mut vram, 0xff0000, i, 0, i, rect_size);
+    }
+
+    let cx = rect_size / 2;
+    let cy = rect_size / 2;
+
+    for i in (0..=rect_size).step_by(grid_size as usize) {
+        let _ = draw_line(&mut vram, 0xffff00, cx, cy, 0, i);
+        let _ = draw_line(&mut vram, 0x00ffff, cx, cy, i, 0);
+        let _ = draw_line(&mut vram, 0xff00ff, cx, cy, rect_size, i);
+        let _ = draw_line(&mut vram, 0xffffff, cx, cy, i, rect_size);
+    }
+
+    for (i, c) in "ABCEF".chars().enumerate() {
+        draw_font_fg(&mut vram, i as i64 * 16 + 256, i as i64 * 16, 0xffffff, c);
+    }
+
+    draw_str_fg(&mut vram, 256, 256, 0xffffff, "Hello World");
+
     loop {
         // 何もしない
         unsafe {
@@ -264,4 +288,100 @@ fn fill_rect<T: Bitmap>(
     }
 
     Ok(())
+}
+
+fn calc_slope_point(da: i64, db: i64, ia: i64) -> Option<i64> {
+    if da < db {
+        None
+    } else if da == 0 {
+        Some(0)
+    } else if (0 .. da).contains(&ia) {
+        Some((2 * db * ia + da) / da / 2)
+    } else {
+        None
+    }
+}
+
+fn draw_line<T: Bitmap>(
+    buf: &mut T,
+    color: u32,
+    x0: i64,
+    y0: i64,
+    x1: i64,
+    y1: i64,
+) -> Result<()> {
+    if !buf.is_in_x_range(x0)
+        || !buf.is_in_y_range(y0)
+        || !buf.is_in_x_range(x1)
+        || !buf.is_in_y_range(y1)
+    {
+        return Err("Out of range");
+    }
+
+    let dx = (x1 - x0).abs();
+    let sx = (x1 - x0).signum();
+    let dy = (y1 - y0).abs();
+    let sy = (y1 - y0).signum();
+
+    if dx >= dy {
+        for (rx, ry) in (0..dx)
+            .flat_map(|rx| calc_slope_point(dx, dy, rx).map(|ry| (rx, ry)))
+            {
+                draw_point(buf, color, x0 + rx * sx, y0 + ry * sy)?;
+            }
+    } else {
+        for (rx, ry) in (0 .. dx)
+            .flat_map(|ry| calc_slope_point(dx, dy, ry).map(|rx| (rx, ry)))
+            {
+                draw_point(buf, color, x0 + rx * sx, y0 + ry * sy)?;
+            }
+    }
+
+    Ok(())
+}
+
+fn lookup_font(c: char) -> Option<[[char; 8]; 16]> {
+    const FONT_SOURCE: &str = include_str!("./font.txt");
+    if let Ok(c) = u8::try_from(c) {
+        let mut fi = FONT_SOURCE.split('\n');
+        while let Some(line) = fi.next() {
+            if let Some(line) = line.strip_prefix("0x") {
+                if let Ok(idx) = u8::from_str_radix(line, 16) {
+                    if idx != c {
+                        continue;
+                    }
+                    let mut font = [['*'; 8]; 16];
+                    for (y, line) in fi.clone().take(16).enumerate() {
+                        for (x, c) in line.chars().enumerate() {
+                            if let Some(e) = font[y].get_mut(x) {
+                                *e = c;
+                            }
+                        }
+                    }
+                    return Some(font);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn draw_font_fg<T: Bitmap>(buf: &mut T, x: i64, y: i64, color: u32, c: char) {
+    if let Some(font) = lookup_font(c) {
+        for (dy, row) in font.iter().enumerate() {
+            for (dx, pixel) in row.iter().enumerate() {
+                let color = match pixel {
+                    '*' => color,
+                    _ => continue,
+                };
+                let _ = draw_point(buf, color, x + dx as i64, y + dy as i64);
+            }
+        }
+    }
+}
+
+fn draw_str_fg<T: Bitmap>(buf: &mut T, x: i64, y: i64, color: u32, s: &str) {
+    for (i, c) in s.chars().enumerate() {
+        draw_font_fg(buf, x + i as i64 * 8, y, color, c);
+    }
 }
