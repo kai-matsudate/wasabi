@@ -109,13 +109,16 @@ fn locate_graphic_protocol<'a>(
 #[no_mangle]
 fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     let mut vram = init_vram(efi_system_table).expect("Failed to init vram");
-    for y in 0..vram.height() {
-        for x in 0..vram.width() {
-            if let Some(pixel) = vram.pixel_at_mut(x, y) {
-                // 0xFF00FF00 はARGB8888 で緑色
-                *pixel = 0x00FF00;
-            }
-        }
+
+    let vw = vram.width();
+    let vh = vram.height();
+    fill_rect(&mut vram, 0x000000, 0, 0, vw, vh).expect("Failed to fill rect");
+    fill_rect(&mut vram, 0xff0000, 32, 32, 32, 32).expect("Failed to fill rect");
+    fill_rect(&mut vram, 0x00ff00, 64, 64, 64, 64).expect("Failed to fill rect");
+    fill_rect(&mut vram, 0x0000ff, 128, 128, 128, 128).expect("Failed to fill rect");
+
+    for i in 0 .. 256 {
+        let _ = draw_point(&mut vram, 0x010101 * i as u32, i, i);
     }
 
     loop {
@@ -136,6 +139,7 @@ fn panic(_info: &PanicInfo) -> ! {
     }
 }
 
+// フレームバッファを操作するためのトレイト
 trait Bitmap {
     fn bytes_per_pixel(&self) -> i64;
     fn pixels_per_line(&self) -> i64;
@@ -147,10 +151,12 @@ trait Bitmap {
     /// Returned pointer is valid as long as the given cordinates are valid.
     /// which means that passing is_in_*_range tests.
     unsafe fn unchecked_pixel_at_mut(&mut self, x: i64, y: i64) -> *mut u32 {
-        self.buf_mut()
-            .add(((y * self.pixels_per_line() + x) * self.bytes_per_pixel()) as usize)
-            as *mut u32
+        self.buf_mut().add(
+            ((y * self.pixels_per_line() + x ) * self.bytes_per_pixel())
+                as usize,
+        ) as *mut u32
     }
+
     fn pixel_at_mut(&mut self, x: i64, y: i64) -> Option<&mut u32> {
         if self.is_in_x_range(x) && self.is_in_y_range(y) {
             unsafe { Some(&mut *self.unchecked_pixel_at_mut(x, y)) }
@@ -158,6 +164,8 @@ trait Bitmap {
             None
         }
     }
+
+    // safeness を確認するための関数
 
     fn is_in_x_range(&self, px: i64) -> bool {
         0 <= px && px < min(self.width(), self.pixels_per_line())
@@ -205,4 +213,55 @@ fn init_vram(efi_system_table: &EfiSystemTable) -> Result<VramBufferInfo> {
         height: gp.mode.info.vertical_resolution as i64,
         pexels_per_line: gp.mode.info.pixels_per_scan_line as i64,
     })
+}
+
+/// # Safety
+///
+/// (x, y) must be a valid point in the buf.
+/// 座標で取得したピクセルを coloring する
+unsafe fn unchecked_draw_point<T: Bitmap>(
+    buf: &mut T,
+    color: u32,
+    x: i64,
+    y: i64,
+) {
+    *buf.unchecked_pixel_at_mut(x, y) = color;
+}
+
+fn draw_point<T: Bitmap>(
+    buf: &mut T,
+    color: u32,
+    x: i64,
+    y: i64,
+) -> Result<()> {
+    *(buf.pixel_at_mut(x, y).ok_or("Out of range")?) = color;
+    Ok(())
+}
+
+fn fill_rect<T: Bitmap>(
+    buf: &mut T,
+    color: u32,
+    px: i64,
+    py: i64,
+    w: i64,
+    h: i64,
+) -> Result<()> {
+    if !buf.is_in_x_range(px)
+        || !buf.is_in_y_range(py)
+        || !buf.is_in_x_range(px + w - 1)
+        || !buf.is_in_y_range(py + h - 1)
+    {
+        return Err("Out of range");
+    }
+
+    for y in py..py + h {
+        for x in px..px + w {
+            unsafe {
+                // check しているので unsafe で問題ない
+                unchecked_draw_point(buf, color, x, y);
+            }
+        }
+    }
+
+    Ok(())
 }
