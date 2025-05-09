@@ -1,8 +1,10 @@
 #![feature(offset_of)]
+#![no_std]
 #![no_main]
 
 use core::arch::asm;
 use core::fmt::Write;
+use core::panic::PanicInfo;
 use core::writeln;
 use wasabi::graphics::draw_test_pattern;
 use wasabi::graphics::fill_rect;
@@ -68,5 +70,15 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
 
     loop {
         hlt();
+    }
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {
+        // 何もしない
+        unsafe {
+            asm!("hlt");
+        }
     }
 }
