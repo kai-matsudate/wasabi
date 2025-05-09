@@ -96,10 +96,7 @@ impl MemoryMapHolder {
     }
 
     pub fn iter(&self) -> MemoryMapIterator {
-        MemoryMapIterator {
-            map: self,
-            ofs: 0,
-        }
+        MemoryMapIterator { map: self, ofs: 0 }
     }
 }
 
@@ -122,8 +119,7 @@ impl<'a> Iterator for MemoryMapIterator<'a> {
             None
         } else {
             let e: &EfiMemoryDescriptor = unsafe {
-                &*(self.map.memory_map_buffer.as_ptr().add(self.ofs)
-                    as *const EfiMemoryDescriptor)
+                &*(self.map.memory_map_buffer.as_ptr().add(self.ofs) as *const EfiMemoryDescriptor)
             };
             self.ofs += self.map.descriptor_size;
             Some(e)
@@ -165,8 +161,7 @@ impl EfiBootServicesTable {
 }
 
 const _: () = assert!(offset_of!(EfiBootServicesTable, get_memory_map) == 56);
-const _: () =
-    assert!(offset_of!(EfiBootServicesTable, exit_boot_services) == 232);
+const _: () = assert!(offset_of!(EfiBootServicesTable, exit_boot_services) == 232);
 const _: () = assert!(offset_of!(EfiBootServicesTable, locate_protocol) == 320);
 
 #[repr(C)]
@@ -279,7 +274,7 @@ pub struct VramTextWriter<'a> {
     cursor_y: i64,
 }
 
-impl <'a> VramTextWriter<'a> {
+impl<'a> VramTextWriter<'a> {
     pub fn new(vram: &'a mut VramBufferInfo) -> Self {
         Self {
             vram,
@@ -313,10 +308,8 @@ pub fn exit_from_efi_boot_services(
     loop {
         let status = efi_system_table.boot_services.get_memory_map(memory_map);
         assert_eq!(status, EfiStatus::Success);
-        let status = (efi_system_table.boot_services.exit_boot_services)(
-                image_handle,
-                memory_map.map_key,
-        );
+        let status =
+            (efi_system_table.boot_services.exit_boot_services)(image_handle, memory_map.map_key);
         if status == EfiStatus::Success {
             break;
         }

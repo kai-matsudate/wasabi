@@ -2,7 +2,6 @@
 #![no_std]
 #![no_main]
 
-use core::arch::asm;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::writeln;
@@ -55,13 +54,10 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     writeln!(
         w,
         "Total: {total_memory_pages} pages = {total_memory_size_mib} MiB"
-    ).unwrap();
+    )
+    .unwrap();
 
-    exit_from_efi_boot_services(
-        image_handle,
-        efi_system_table,
-        &mut memory_map,
-    );
+    exit_from_efi_boot_services(image_handle, efi_system_table, &mut memory_map);
 
     writeln!(w, "Exit from EFI Boot Services").unwrap();
 
