@@ -23,8 +23,6 @@ use wasabi::x86::hlt;
 
 #[no_mangle]
 fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
-    let mut sw = SerialPort::new_for_com1();
-    writeln!(sw, "Hello via serial port").unwrap();
     let mut vram = init_vram(efi_system_table).expect("Failed to init vram");
 
     let vw = vram.width();
