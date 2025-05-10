@@ -23,12 +23,17 @@ use core::ptr::null_mut;
 
 // v を2の累乗に切り上げる
 pub fn round_up_to_nearest_pow2(v: usize) -> Result<usize> {
-    /// v から 1 を引く
-    /// ビット表現で先頭に続く 0 の数を数える(最上位ビットの1の位置を取得)
-    /// それ以下のビット(全体のビット数から最上位ビットの位置を引いたもの)分だけビットシフトする))
+    // v から 1 を引く
+    // ビット表現で先頭に続く 0 の数を数える(最上位ビットの1の位置を取得)
+    // それ以下のビット(全体のビット数から最上位ビットの位置を引いたもの)分だけビットシフトする))
     1usize
         .checked_shl(usize::BITS - v.wrapping_sub(1).leading_zeros())
         .ok_or("Out of range")
+}
+
+#[test_case]
+fn round_up_to_nearest_pow2_tests() {
+    unimplemented!("cargo test should fail, right?");
 }
 
 struct Header {
