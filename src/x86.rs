@@ -179,6 +179,8 @@ pub type PDPT = Table<3, 30, PD>;
 pub type PML4 = Table<4, 39, PDPT>;
 
 
+// メモリ保護のための属性設定のために、セグメントセレクタに適切な値を設定する
+
 /// # Safety
 /// Anything can happen if the given selector is invalid.
 pub unsafe fn write_es(selector: u16) {
@@ -199,7 +201,14 @@ pub unsafe fn write_cs(cs: u16) {
         "ljmp [rsp]",
               "2:",
               "add rsp, 8 + 2", // Cleanup the far pointer on the stack
-                      in("cx") cs)
+                      in("cx") cs);
+}
+/// # Safety
+/// Anything can happen if the given selector is invalid.
+pub unsafe fn write_ss(selector: u16) {
+    asm!(
+        "mov ss, ax",
+                        in("ax") selector)
 }
 
 /// # Safety
@@ -356,6 +365,7 @@ macro_rules! interrupt_entrypoint {
             ":\n",
             "push 0 // No error code\n",
             "push rcx // Save rcx first to reuse \n",
+            "mov rcx, ",
             stringify!($index),
             "\n",
             "jmp inthandler_common"
@@ -376,7 +386,7 @@ macro_rules! interrupt_entrypoint_with_ecode {
             "mov rcx, ",
             stringify!($index),
             "\n",
-            "jmp inthandler_common"
+            "jmp inthandler_common" // 後から宣言する共通の例外処理を行う asm
         ));
     };
 }
@@ -471,6 +481,9 @@ extern "sysv64" fn inthandler(info: &InterruptInfo, index: usize) {
     error!("Exception {index:#04X}: ");
     match index {
         3 => {
+            error!("Breakpoint");
+        }
+        6 => {
             error!("Invalid Opcode");
         }
         8 => {
@@ -482,6 +495,7 @@ extern "sysv64" fn inthandler(info: &InterruptInfo, index: usize) {
             error!("Bytes @ RIP({rip:#018X}):");
             let rip = rip as *const u8;
             let bytes = unsafe { core::slice::from_raw_parts(rip, 16)};
+            error!(" = {bytes:02X?}");
         }
         14 => {
             error!("Page Fault");
@@ -528,7 +542,7 @@ extern "sysv64" fn int_handler_unimplemented() {
 pub const BIT_FLAGS_INTGATE: u8 = 0b0000_1110u8;
 pub const BIT_FLAGS_PRESENT: u8 = 0b1000_0000u8;
 pub const BIT_FLAGS_DPL0: u8 = 0 << 5;
-pub const BIT_FLAGS_DPL3: u8 = 0 << 3;
+pub const BIT_FLAGS_DPL3: u8 = 3 << 5;
 
 #[repr(u8)]
 #[derive(Copy, Clone)]
@@ -577,6 +591,7 @@ impl IdtDescriptor {
 #[allow(dead_code)]
 #[repr(C, packed)]
 #[derive(Debug)]
+// この構造体のポインタを lidt 命令に渡すことで idt を参照した割り込み処理ができるようになる
 struct IdtrParameters {
     limit: u16,
     base: *const IdtDescriptor,
@@ -650,6 +665,7 @@ impl Idt {
             base: entries.as_ptr(),
         };
 
+        // FIX: これがロギングされないので、コメントデバッグでどこまで実行されているか確認するところから再開する
         info!("loading IDT: {params:?}");
         // SAFETY: This is safe since it loads a valid IDT thiat is constructed in the code just above
         unsafe {
@@ -661,11 +677,17 @@ impl Idt {
 }
 
 #[repr(C, packed)]
+// 32 ビット時代のプリエンプティブマルチタスク実装のコンテキストスイッチ時のコンテキストの退避に利用されていたTSSを表現
+// ハードウェア実装であったことから現在は利用されていない
+// しかし、割り込み発生時のスタックの退避には未だに利用されている
+// (スタックに関連する例外が発生した場合にはスタックにコンテキストを対比させることはできないため、スタックではなくTSSを利用する)
 struct TaskStateSegment64Inner {
     _reserved0: u32,
     _rsp: [u64; 3], // for switch info ring0-2
+    // ist に 7 つのスタックポインタを設定可能
     _ist: [u64; 8], // ist[1]-ist[7] (ist[0] is reserved)
-    _reserved1: [u64; 5],
+    // ist[0] is defined as 0 before, so it reserved still now for compatiblity.
+    _reserved1: [u16; 5],
     _io_map_base_addr: u16,
 }
 const _: () = assert!(size_of::<TaskStateSegment64Inner>() == 104);
@@ -734,8 +756,8 @@ pub const BIT_TYPE_DATA: u64 = 0b10u64 << 43;
 pub const BIT_TYPE_CODE: u64 = 0b11u64 << 43;
 
 pub const BIT_PRESENT: u64 = 1u64 << 47;
-pub const BIT_CS_LONG_MODE: u64 = 1u64 << 54;
-pub const BIT_CS_READABLE: u64 = 1u64 << 54;
+pub const BIT_CS_LONG_MODE: u64 = 1u64 << 53;
+pub const BIT_CS_READABLE: u64 = 1u64 << 53;
 pub const BIT_DS_WRITABLE: u64 = 1u64 << 41;
 pub const BIT_DPL0: u64 = 0u64 << 45;
 pub const BIT_DPL3: u64 = 3u64 << 45;
@@ -781,11 +803,16 @@ impl GdtWrapper {
         };
 
         info!("Loading GDT @ {:018X}", params.base as u64);
-        // SAFEWTY: This is safe since it is loading a valid GDT just constructed in the above
+        // SAFETY: This is safe since it is loading a valid GDT just constructed in the abobe
+        unsafe {
+            asm!("lgdt [rcx]",
+                in("rcx") &params);
+        }
         unsafe {
             asm!("ltr cx",
                 in("cx") TSS64_SEL);
         }
+        info!("Loading TSS ( selector = {:#X} )", TSS64_SEL);
     }
 }
 impl Default for GdtWrapper {
